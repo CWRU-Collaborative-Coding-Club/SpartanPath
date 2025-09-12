@@ -1,2 +1,1 @@
-# this project has been canceled 
-
+SPARTANPATH
