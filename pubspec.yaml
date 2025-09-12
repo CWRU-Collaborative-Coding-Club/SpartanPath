@@ -15,8 +15,7 @@ dependencies:
   flutter:
     sdk: flutter
 
-  mapbox_maps_flutter:
-    mapbox_maps_flutter: ^2.0.0
+  mapbox_maps_flutter: ^2.0.0
     
 
   cupertino_icons: ^1.0.2
