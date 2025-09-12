@@ -2,7 +2,7 @@
   "name": "Flutter Dev",
   "image": "ghcr.io/cirruslabs/flutter:latest",
   "features": {
-    "ghcr.io/devcontainers/features/docker-in-docker:1": {}
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
   },
   "postCreateCommand": "flutter doctor -v",
   "customizations": {
