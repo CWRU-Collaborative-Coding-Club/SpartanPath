@@ -1,3 +1,3 @@
 #!/bin/sh
 
-export APPETIZE_API_KEY = yourkeyhere
+export APPETIZE_API_KEY=yourkeyhere
