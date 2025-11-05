@@ -1,0 +1,162 @@
+[
+  {
+    "id": 1,
+    "building_name": "Olin Building",
+    "building_sis_name": null,
+    "building_coords": {
+      "lat": 41.502159,
+      "long": -81.607845
+    },
+    "entrance_coords": [
+      {
+        "lat": 41.502240,
+        "long": -81.607684
+      },
+      {
+        "lat": 41.502035,
+        "long": -81.607995
+      }
+    ]
+  },
+  {
+    "id": 2,
+    "building_name":"Nord Hall",
+    "building_sis_name": null,
+    "building_coords": {
+      "lat": 41.502529,
+      "long": -81.607684
+    },
+    "entrance_coords": [
+      {
+        "lat": 41.502360,
+        "long":41.502360
+      },
+      {
+        "lat":41.502549,
+        "long":-81.607717
+      }
+    ]
+  },
+  {
+    "id": 3,
+    "building_name": "Sears Building",
+    "building_sis_name": null,
+    "building_coords": {
+      "lat": 41.502716,
+      "long": -81.608243
+    },
+    "entrance_coords": [
+      {
+        "lat": 41.502804,
+        "long": -81.607986
+      },
+      {
+        "lat": 41.502523,
+        "long": -81.608495
+      }
+    ]
+  },
+  {
+    "id": 4,
+    "building_name": "Wickenden Building",
+    "building_sis_name": null,
+    "building_coords": {
+      "lat":41.503053,
+      "long": -81.608393
+    },
+    "entrance_coords": [
+      {
+        "lat": 41.503009,
+        "long": -81.608222
+      }
+    ]
+  },
+  {
+    "id": 4,
+    "building_name": "Bingham Building",
+    "building_sis_name": null,
+    "building_coords": {
+      "lat":41.502386,
+      "long": -81.606801
+    },
+    "entrance_coords": [
+      {
+        "lat": 41.502491,
+        "long":  -81.607064
+      }
+    ]
+  },
+  {
+    "id": 5,
+    "building_name": "AW Smith Building",
+    "building_sis_name": null,
+    "building_coords": {
+      "lat": 41.502991,
+      "long":-81.606943
+    },
+    "entrance_coords": [
+      {
+        "lat": 41.502911,
+        "long": -81.607109
+      }
+    ]
+  },
+  {
+    "id": 6,
+    "building_name": "Strosacker Auditorium",
+    "building_sis_name": null,
+    "building_coords": {
+      "lat":41.502991,
+      "long":-81.606943
+    },
+    "entrance_coords": [
+      {
+        "lat": 41.503220,
+        "long": -81.607555
+      },
+      {
+        "lat": 41.503389,
+        "long": -81.607276
+      }
+    ]
+  },
+  {
+    "id": 7,
+    "building_name": "Rockefeller Building",
+    "building_sis_name": null,
+    "building_coords": {
+      "lat": 41.503638,
+      "long":-81.607844
+    },
+    "entrance_coords": [
+      {
+        "lat": 41.503546,
+        "long": -81.607941
+      },
+      {
+        "lat": 41.503674,
+        "long": -81.607705
+      }
+    ]
+  },
+  {
+    "id": 8,
+    "building_name": "Eldred Hall",
+    "building_sis_name": null,
+    "building_coords": {
+      "lat": 41.503961,
+      "long":-81.607884
+    },
+    "entrance_coords": [
+      {
+        "lat": 41.503861,
+        "long": -81.607852
+      },
+      {
+        "lat": 41.504025,
+        "long": -81.607750
+      }
+    ]
+  },
+
+]

@@ -35,6 +35,7 @@ class _MapScreenState extends State<MapScreen> {
     return Scaffold(
       body: MapWidget(
         onMapCreated: _onMapCreated,
+        styleUri: MapboxStyles.MAPBOX_STREETS,
         // If needed, set the access token globally before running the app:
       ),
     );
@@ -43,7 +44,7 @@ class _MapScreenState extends State<MapScreen> {
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  MapboxOptions.setAccessToken("");
+  MapboxOptions.setAccessToken("pk.eyJ1IjoiY2hhcmFuNjkyNCIsImEiOiJjbWdsYW15azkwdXc1MmtxNDg1NXQzczJoIn0.Fn4bJ6dBWvp8xueF5J7Gbg");
   runApp(MaterialApp(
     home: MapScreen(),
   ));
