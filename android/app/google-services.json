@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "404594863125",
+    "project_id": "spartanpath-a39a0",
+    "storage_bucket": "spartanpath-a39a0.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:404594863125:android:fe8cfb5e97951f78bc321c",
+        "android_client_info": {
+          "package_name": "com.mapbox.maps.flutter.example"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCv37Dut8eaRulBlFUNGJiE9LblLEtrbNM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
