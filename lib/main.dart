@@ -18,8 +18,8 @@ class _MapScreenState extends State<MapScreen> {
     if (mapboxMap != null) {
       // Define the bounding box for CWRU
       CoordinateBounds cwruBounds = CoordinateBounds(
-        southwest: Point(coordinates: Position(-81.6150, 41.5000)), // (-81.6150, 41.5000),
-        northeast: Point(coordinates: Position(-81.6045, 41.5100)),
+        southwest: Point(coordinates: Position(-81.591580, 41.515795)), // (-81.6150, 41.5000),
+        northeast: Point(coordinates: Position(-81.624544, 41.499713)),
         infiniteBounds: false
         
       );
@@ -43,7 +43,7 @@ class _MapScreenState extends State<MapScreen> {
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  MapboxOptions.setAccessToken("");
+  MapboxOptions.setAccessToken("pk.eyJ1IjoiampmMTI4IiwiYSI6ImNtNnY5angzaTA1enEybm9jbGFvaDRkdjgifQ.5oSXmK0qwENUqonqThG3gg");
   runApp(MaterialApp(
     home: MapScreen(),
   ));
