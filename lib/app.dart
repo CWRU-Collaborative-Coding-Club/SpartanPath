@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mapbox_navigation_flutter/mapbox_navigation_flutter.dart';
+import 'db.dart';
 
 class SampleNavigationApp extends StatefulWidget {
   const SampleNavigationApp({super.key});
@@ -14,44 +15,6 @@ class SampleNavigationApp extends StatefulWidget {
 class _SampleNavigationAppState extends State<SampleNavigationApp> {
   String? _platformVersion;
   String? _instruction;
-  final _origin = WayPoint(
-      name: "Way Point 1",
-      latitude: 38.9111117447887,
-      longitude: -77.04012393951416,
-      isSilent: true);
-  final _stop1 = WayPoint(
-      name: "Way Point 2",
-      latitude: 38.91113678979344,
-      longitude: -77.03847169876099,
-      isSilent: true);
-  final _stop2 = WayPoint(
-      name: "Way Point 3",
-      latitude: 38.91040213277608,
-      longitude: -77.03848242759705,
-      isSilent: false);
-  final _stop3 = WayPoint(
-      name: "Way Point 4",
-      latitude: 38.909650771013034,
-      longitude: -77.03850388526917,
-      isSilent: true);
-  final _destination = WayPoint(
-      name: "Way Point 5",
-      latitude: 38.90894949285854,
-      longitude: -77.03651905059814,
-      isSilent: false);
-
-  final _home = WayPoint(
-      name: "Home",
-      latitude: 37.77440680146262,
-      longitude: -122.43539772352648,
-      isSilent: false);
-
-  final _store = WayPoint(
-      name: "Store",
-      latitude: 37.76556957793795,
-      longitude: -122.42409811526268,
-      isSilent: false);
-
   bool _isMultipleStop = false;
   double? _distanceRemaining, _durationRemaining;
   MapBoxNavigationViewController? _controller;
@@ -59,6 +22,7 @@ class _SampleNavigationAppState extends State<SampleNavigationApp> {
   bool _isNavigating = false;
   bool _inFreeDrive = false;
   late MapBoxOptions _navigationOption;
+  List<WayPoint> _waypoints = [];
 
   @override
   void initState() {
@@ -85,7 +49,16 @@ class _SampleNavigationAppState extends State<SampleNavigationApp> {
     //_navigationOption.initialLatitude = 36.1175275;
     //_navigationOption.initialLongitude = -115.1839524;
     MapBoxNavigation.instance.registerRouteEventListener(_onEmbeddedRouteEvent);
-
+    await initializeFirebase();
+    List<Location> locations = await getLocations();
+    List<WayPoint> points = locations.map((loc) {
+      return WayPoint(
+        name: loc.buildingName,
+        latitude: loc.buildingCoordinates.lat,
+        longitude: loc.buildingCoordinates.lng,
+        isSilent: false,
+      );
+    }).toList();
     String? platformVersion;
     // Platform messages may fail, so we use a try/catch PlatformException.
     try {
@@ -96,6 +69,7 @@ class _SampleNavigationAppState extends State<SampleNavigationApp> {
 
     setState(() {
       _platformVersion = platformVersion;
+      _waypoints = points;
     });
   }
 
