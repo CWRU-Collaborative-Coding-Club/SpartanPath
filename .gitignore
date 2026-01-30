@@ -46,3 +46,5 @@ app.*.map.json
 /android/app/release
 env
 app-release.apk
+
+pubspec.lock
