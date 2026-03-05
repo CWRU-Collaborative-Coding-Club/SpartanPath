@@ -33,13 +33,20 @@ class SpartanPathSheetDemo extends StatefulWidget {
 }
 
 class _SpartanPathSheetDemoState extends State<SpartanPathSheetDemo> {
-  int _selectedTab = 0; // 0=Search, 1=Favorites, 2=Me
+  int _selectedTab = 0;
   final _searchCtrl = TextEditingController();
   String _query = '';
 
+  Location? _selectedLocation;
+  final _mainSheetController = DraggableScrollableController();
+  double _sizeBeforeDetail = _SheetConfig.initialChildSize;
+
+  // Mutable favorites list — seeded from sample data
+  late final List<Location> _favorites = List.of(favoriteLocations);
+
   late final Map<int, List<Location>> _dataByTab = {
     0: searchLocations,
-    1: favoriteLocations,
+    1: _favorites,
     2: List.generate(
       8,
       (i) => Location(
@@ -50,17 +57,29 @@ class _SpartanPathSheetDemoState extends State<SpartanPathSheetDemo> {
     ),
   };
 
+  bool _isFavorite(Location location) =>
+      _favorites.any((f) => f.name == location.name);
+
+  void _toggleFavorite(Location location) {
+    setState(() {
+      if (_isFavorite(location)) {
+        _favorites.removeWhere((f) => f.name == location.name);
+      } else {
+        _favorites.add(location);
+      }
+    });
+  }
+
   @override
   void dispose() {
     _searchCtrl.dispose();
+    _mainSheetController.dispose();
     super.dispose();
   }
 
   void _selectTab(int tabIndex) {
     setState(() {
       _selectedTab = tabIndex;
-
-      // Optional: clear query when leaving Search tab
       if (tabIndex != _TabIndex.search) {
         _query = '';
         _searchCtrl.clear();
@@ -75,11 +94,29 @@ class _SpartanPathSheetDemoState extends State<SpartanPathSheetDemo> {
     return items.where((loc) => loc.matchesQuery(q)).toList();
   }
 
+  void _openDetail(Location location) {
+    _sizeBeforeDetail = _mainSheetController.isAttached
+        ? _mainSheetController.size
+        : _SheetConfig.initialChildSize;
+    setState(() => _selectedLocation = location);
+    if (_mainSheetController.isAttached &&
+        _sizeBeforeDetail > _SheetConfig.initialChildSize) {
+      _mainSheetController.jumpTo(_SheetConfig.initialChildSize);
+    }
+  }
+
+  void _closeDetail() {
+    setState(() => _selectedLocation = null);
+    if (_mainSheetController.isAttached &&
+        _sizeBeforeDetail > _SheetConfig.initialChildSize) {
+      _mainSheetController.jumpTo(_sizeBeforeDetail);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final showSearch = _selectedTab == _TabIndex.search;
-
     final metrics = _SheetLayoutMetrics.from(context: context, showSearch: showSearch);
     final filtered = _filteredItems();
 
@@ -87,7 +124,11 @@ class _SpartanPathSheetDemoState extends State<SpartanPathSheetDemo> {
       children: [
         _Background(scheme: scheme),
 
-        DraggableScrollableSheet(
+        // Main search/browse sheet — always present underneath
+        ScrollConfiguration(
+          behavior: _MouseDragScrollBehavior(),
+          child: DraggableScrollableSheet(
+          controller: _mainSheetController,
           minChildSize: _SheetConfig.minChildSize,
           initialChildSize: _SheetConfig.initialChildSize,
           maxChildSize: _SheetConfig.maxChildSize,
@@ -110,15 +151,336 @@ class _SpartanPathSheetDemoState extends State<SpartanPathSheetDemo> {
                       metrics: metrics,
                     ),
                   ),
-
                   const SliverToBoxAdapter(child: Divider(height: 1)),
-                  _ResultsList(items: filtered),
+                  _ResultsList(
+                    items: filtered,
+                    onTapLocation: _openDetail,
+                  ),
                 ],
               ),
             );
           },
+          ),
         ),
+
+        // Detail sheet — slides over the search sheet when a location is tapped
+        if (_selectedLocation != null)
+          _LocationDetailSheet(
+            location: _selectedLocation!,
+            onBack: _closeDetail,
+            isFavorite: _isFavorite(_selectedLocation!),
+            onFavoriteToggle: () => _toggleFavorite(_selectedLocation!),
+          ),
       ],
+    );
+  }
+}
+
+/// ---------------------------------------------------------------------------
+///  LOCATION DETAIL SHEET
+/// ---------------------------------------------------------------------------
+class _LocationDetailSheet extends StatefulWidget {
+  const _LocationDetailSheet({
+    required this.location,
+    required this.onBack,
+    required this.isFavorite,
+    required this.onFavoriteToggle,
+  });
+
+  final Location location;
+  final VoidCallback onBack;
+  final bool isFavorite;
+  final VoidCallback onFavoriteToggle;
+
+  @override
+  State<_LocationDetailSheet> createState() => _LocationDetailSheetState();
+}
+
+class _LocationDetailSheetState extends State<_LocationDetailSheet> {
+  String? _selectedEntrance;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.location.entrances.isNotEmpty) {
+      _selectedEntrance = widget.location.entrances.first;
+    }
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final location = widget.location;
+
+    return Align(
+      alignment: Alignment.bottomCenter,
+      child: FractionallySizedBox(
+        heightFactor: 0.5,
+        widthFactor: 1.0,
+        child: ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+          child: Container(
+            color: Colors.white,
+            child: Column(
+              children: [
+                // Pinned header
+                _DetailHeader(
+                  location: location,
+                  onBack: widget.onBack,
+                  isFavorite: widget.isFavorite,
+                  onFavoriteToggle: widget.onFavoriteToggle,
+                ),
+                const Divider(height: 1),
+
+                // Scrollable middle content
+                Expanded(
+                  child: ScrollConfiguration(
+                    behavior: _MouseDragScrollBehavior(),
+                    child: ListView(
+                      padding: EdgeInsets.zero,
+                      children: [
+                        _DetailNavRow(
+                          icon: Icons.description_outlined,
+                          label: 'Description',
+                          onTap: () {},
+                        ),
+                        const Divider(height: 1, indent: 16, endIndent: 16),
+                        _DetailNavRow(
+                          icon: Icons.map_outlined,
+                          label: 'Floor plans',
+                          onTap: () {},
+                        ),
+
+                        if (location.entrances.isNotEmpty) ...[
+                          _SectionHeader(title: 'ENTRANCES'),
+                          ...location.entrances.map(
+                            (e) => _EntranceRow(
+                              label: e,
+                              highlighted: e == _selectedEntrance,
+                              onTap: () =>
+                                  setState(() => _selectedEntrance = e),
+                            ),
+                          ),
+                        ],
+
+                        if (location.rooms.isNotEmpty) ...[
+                          _SectionHeader(title: 'ROOMS'),
+                          ...location.rooms.map((r) => _RoomRow(label: r)),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+
+                // Always-visible pinned DIRECTIONS button
+                _DirectionsButton(onTap: () {}),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DetailHeader extends StatelessWidget {
+  const _DetailHeader({
+    required this.location,
+    required this.onBack,
+    required this.isFavorite,
+    required this.onFavoriteToggle,
+  });
+
+  final Location location;
+  final VoidCallback onBack;
+  final bool isFavorite;
+  final VoidCallback onFavoriteToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      child: Column(
+        children: [
+          // Back arrow + title + star row
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 8, 4, 12),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_back, color: _Colors.headerNavy),
+                  onPressed: onBack,
+                  tooltip: 'Back',
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        location.name,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: _Colors.headerNavy,
+                        ),
+                      ),
+                      if (location.description.isNotEmpty)
+                        Text(
+                          location.description,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Colors.black54,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: Icon(
+                    isFavorite ? Icons.star : Icons.star_border,
+                    color: isFavorite ? const Color(0xFFFFC107) : Colors.black45,
+                    size: 28,
+                  ),
+                  onPressed: onFavoriteToggle,
+                  tooltip: isFavorite ? 'Remove from favorites' : 'Add to favorites',
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DetailNavRow extends StatelessWidget {
+  const _DetailNavRow({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      child: ListTile(
+        leading: Icon(icon, color: const Color(0xFF444444), size: 22),
+        title: Text(label, style: _TextStyles.title),
+        trailing: const Icon(Icons.chevron_right, color: Color(0xFF444444)),
+        onTap: onTap,
+      ),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({required this.title});
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
+      child: Text(
+        title,
+        style: const TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.bold,
+          color: Colors.black87,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
+}
+
+class _EntranceRow extends StatelessWidget {
+  const _EntranceRow({
+    required this.label,
+    required this.highlighted,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool highlighted;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        color: highlighted ? const Color(0xFFDDE8F5) : Colors.white,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 14,
+            color: highlighted ? _Colors.headerNavy : Colors.black87,
+            fontWeight: highlighted ? FontWeight.w500 : FontWeight.normal,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RoomRow extends StatelessWidget {
+  const _RoomRow({required this.label});
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Text(label, style: const TextStyle(fontSize: 14, color: Colors.black87)),
+    );
+  }
+}
+
+class _DirectionsButton extends StatelessWidget {
+  const _DirectionsButton({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+      child: SizedBox(
+        width: double.infinity,
+        height: 48,
+        child: ElevatedButton(
+          onPressed: onTap,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: _Colors.headerNavy,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+            elevation: 0,
+          ),
+          child: const Text(
+            'DIRECTIONS',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1.2,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -169,11 +531,12 @@ class _FrostedSheet extends StatelessWidget {
 }
 
 /// ---------------------------------------------------------------------------
-///  RESULTS
+///  RESULTS LIST
 /// ---------------------------------------------------------------------------
 class _ResultsList extends StatelessWidget {
-  const _ResultsList({required this.items});
+  const _ResultsList({required this.items, required this.onTapLocation});
   final List<Location> items;
+  final ValueChanged<Location> onTapLocation;
 
   @override
   Widget build(BuildContext context) {
@@ -188,7 +551,10 @@ class _ResultsList extends StatelessWidget {
 
     return SliverList(
       delegate: SliverChildBuilderDelegate(
-        (context, i) => _LocationTile(location: items[i]),
+        (context, i) => _LocationTile(
+          location: items[i],
+          onTap: () => onTapLocation(items[i]),
+        ),
         childCount: items.length,
       ),
     );
@@ -196,8 +562,9 @@ class _ResultsList extends StatelessWidget {
 }
 
 class _LocationTile extends StatelessWidget {
-  const _LocationTile({required this.location});
+  const _LocationTile({required this.location, required this.onTap});
   final Location location;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -205,6 +572,7 @@ class _LocationTile extends StatelessWidget {
       leading: const Icon(Icons.location_on_outlined),
       title: Text(location.name, style: _TextStyles.title),
       subtitle: Text(location.description, style: _TextStyles.subtitle),
+      onTap: onTap,
     );
   }
 }
@@ -225,13 +593,10 @@ class _TopHeaderDelegate extends SliverPersistentHeaderDelegate {
 
   final double extent;
   final bool showSearch;
-
   final int selectedTab;
   final ValueChanged<int> onSelectTab;
-
   final TextEditingController searchController;
   final ValueChanged<String> onQueryChanged;
-
   final _SheetLayoutMetrics metrics;
 
   @override
@@ -286,7 +651,6 @@ class _TopHeaderDelegate extends SliverPersistentHeaderDelegate {
 
   @override
   bool shouldRebuild(covariant _TopHeaderDelegate old) {
-    // Simple + readable: rebuild when any inputs change
     return extent != old.extent ||
         showSearch != old.showSearch ||
         selectedTab != old.selectedTab ||
@@ -320,6 +684,25 @@ class _Grabber extends StatelessWidget {
   }
 }
 
+// Dark grabber for the white detail sheet
+class _GrabberDark extends StatelessWidget {
+  const _GrabberDark();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Container(
+        width: 48,
+        height: 4,
+        decoration: BoxDecoration(
+          color: Colors.black26,
+          borderRadius: BorderRadius.circular(2),
+        ),
+      ),
+    );
+  }
+}
+
 class _TabsRow extends StatelessWidget {
   const _TabsRow({required this.selectedTab, required this.onSelectTab});
   final int selectedTab;
@@ -329,9 +712,7 @@ class _TabsRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-      children: const [
-        // kept as const list, actual selected state handled below via builder:
-      ],
+      children: const [],
     )._withChildren([
       _TabIconButton(
         icon: Icons.search,
@@ -355,7 +736,6 @@ class _TabsRow extends StatelessWidget {
   }
 }
 
-/// Tiny helper to keep `_TabsRow` readable without nesting Row(children: [...])
 extension on Row {
   Row _withChildren(List<Widget> children) {
     return Row(mainAxisAlignment: mainAxisAlignment, children: children);
@@ -451,15 +831,13 @@ class _SearchField extends StatelessWidget {
 }
 
 /// ---------------------------------------------------------------------------
-///  LAYOUT METRICS (keeps build() tidy + text-scale safe)
+///  LAYOUT METRICS
 /// ---------------------------------------------------------------------------
 class _SheetLayoutMetrics {
   final double pinnedHeaderExtent;
-
   final double grabberHeight;
   final double tabsHeight;
   final double searchHeight;
-
   final double vPad;
   final double gap;
 
@@ -477,7 +855,6 @@ class _SheetLayoutMetrics {
     required bool showSearch,
   }) {
     final textScaler = MediaQuery.of(context).textScaler;
-
     final labelFont = textScaler.scale(12);
     final labelLineHeight = labelFont * 1.35;
 
@@ -485,10 +862,7 @@ class _SheetLayoutMetrics {
     const vPad = 12.0;
     const gap = 10.0;
 
-    // icon + gap + label + padding (matches your original intent)
     final tabsHeight = 32 + 4 + labelLineHeight + 16;
-
-    // your original "scale-aware-ish" search height logic, but named
     final searchHeight = 52 + (textScaler.scale(1) - 1) * 8;
 
     final headerBaseExtent = vPad + grabberHeight + gap + tabsHeight + vPad;
@@ -527,6 +901,19 @@ class _SheetLayoutMetrics {
 }
 
 /// ---------------------------------------------------------------------------
+///  MOUSE DRAG SCROLL BEHAVIOR
+/// ---------------------------------------------------------------------------
+class _MouseDragScrollBehavior extends MaterialScrollBehavior {
+  @override
+  Set<PointerDeviceKind> get dragDevices => {
+        PointerDeviceKind.touch,
+        PointerDeviceKind.mouse,
+        PointerDeviceKind.stylus,
+        PointerDeviceKind.trackpad,
+      };
+}
+
+/// ---------------------------------------------------------------------------
 ///  CONSTANTS / THEME-ish
 /// ---------------------------------------------------------------------------
 class _SheetConfig {
@@ -549,7 +936,6 @@ class _Spacing {
 class _Colors {
   static const headerNavy = Color(0xFF0A3A6B);
   static const handleWhite = Colors.white;
-
   static const tabActive = Colors.white;
   static const tabInactive = Colors.white70;
 }
@@ -577,11 +963,15 @@ class Location {
   final String name;
   final String description;
   final String category;
+  final List<String> entrances;
+  final List<String> rooms;
 
   const Location({
     required this.name,
     required this.description,
     required this.category,
+    this.entrances = const [],
+    this.rooms = const [],
   });
 
   bool matchesQuery(String query) {
@@ -600,22 +990,42 @@ final List<Location> searchLocations = [
     name: 'Rockefeller',
     description: 'Department of Physics',
     category: 'Building',
+    entrances: [
+      'Front entrance (Euclid Ave)',
+      'Side entrance (near quad)',
+    ],
+    rooms: ['101', '102', '201', '202'],
   ),
   Location(
     name: 'Wolstein',
     description: 'CWRU Office of Admissions',
     category: 'Building',
+    entrances: [
+      'Main entrance (Adelbert Rd)',
+    ],
+    rooms: ['100', '110'],
   ),
   Location(
     name: 'Mandel Center',
     description:
         'Jack, Joseph, and Morton Mandel Community Center, Admissions Office Welcome Center',
     category: 'Building',
+    entrances: [
+      'Front-right entrance (near intersection)',
+      'Front-left entrance (near humanities quad)',
+      'Back entrance (near Law School)',
+    ],
+    rooms: ['101', '102'],
   ),
   Location(
     name: 'Fribley Commons',
     description: 'Southside Area Commons and Dining Hall',
     category: 'Commons',
+    entrances: [
+      'Main entrance (south side)',
+      'Side entrance (parking lot)',
+    ],
+    rooms: [],
   ),
 ];
 
@@ -624,5 +1034,10 @@ final List<Location> favoriteLocations = [
     name: 'Fribley Commons',
     description: 'Southside Area Commons and Dining Hall',
     category: 'Commons',
+    entrances: [
+      'Main entrance (south side)',
+      'Side entrance (parking lot)',
+    ],
+    rooms: [],
   ),
 ];
