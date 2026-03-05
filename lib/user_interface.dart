@@ -5,6 +5,8 @@ void main() => runApp(const SpartanPathApp());
 
 /// ---------------------------------------------------------------------------
 ///  APP
+///  Root of the application. Sets up Material theming and launches the main
+///  screen. The seed color drives the light-blue background palette.
 /// ---------------------------------------------------------------------------
 class SpartanPathApp extends StatelessWidget {
   const SpartanPathApp({super.key});
@@ -24,6 +26,8 @@ class SpartanPathApp extends StatelessWidget {
 
 /// ---------------------------------------------------------------------------
 ///  SCREEN
+///  The top-level screen widget. Kept as a StatefulWidget so its state class
+///  can manage the main sheet position, selected location, and favorites.
 /// ---------------------------------------------------------------------------
 class SpartanPathSheetDemo extends StatefulWidget {
   const SpartanPathSheetDemo({super.key});
@@ -33,17 +37,33 @@ class SpartanPathSheetDemo extends StatefulWidget {
 }
 
 class _SpartanPathSheetDemoState extends State<SpartanPathSheetDemo> {
+  /// Which tab is currently selected: 0 = Search, 1 = Favorites, 2 = Me.
   int _selectedTab = 0;
+
+  /// Controller and query string for the search text field.
   final _searchCtrl = TextEditingController();
   String _query = '';
 
+  /// The location currently shown in the detail sheet.
+  /// null means the detail sheet is hidden and the main sheet is active.
   Location? _selectedLocation;
+
+  /// Controls the main search sheet's position programmatically, allowing
+  /// us to jump it to a specific snap position when opening/closing details.
   final _mainSheetController = DraggableScrollableController();
+
+  /// Stores where the main sheet was before a detail view was opened,
+  /// so we can restore it to the correct position when the detail is closed.
   double _sizeBeforeDetail = _SheetConfig.initialChildSize;
 
-  // Mutable favorites list — seeded from sample data
+  /// The user's current favorites list. Seeded from [favoriteLocations] but
+  /// mutated at runtime as the user toggles the star on location detail sheets.
+  /// Stored here (rather than in the detail sheet) so the Favorites tab
+  /// always reflects the latest state.
   late final List<Location> _favorites = List.of(favoriteLocations);
 
+  /// Maps each tab index to the list of locations it should display.
+  /// The favorites tab points directly at [_favorites] so it updates live.
   late final Map<int, List<Location>> _dataByTab = {
     0: searchLocations,
     1: _favorites,
@@ -57,9 +77,13 @@ class _SpartanPathSheetDemoState extends State<SpartanPathSheetDemo> {
     ),
   };
 
+  /// Returns true if [location] is currently in the favorites list.
+  /// Matches by name since Location has no unique ID yet.
   bool _isFavorite(Location location) =>
       _favorites.any((f) => f.name == location.name);
 
+  /// Adds or removes [location] from [_favorites] and triggers a rebuild
+  /// so the star icon and Favorites tab both update immediately.
   void _toggleFavorite(Location location) {
     setState(() {
       if (_isFavorite(location)) {
@@ -77,6 +101,8 @@ class _SpartanPathSheetDemoState extends State<SpartanPathSheetDemo> {
     super.dispose();
   }
 
+  /// Switches the active tab. Clears the search query when leaving the
+  /// Search tab so stale results don't appear when returning.
   void _selectTab(int tabIndex) {
     setState(() {
       _selectedTab = tabIndex;
@@ -87,6 +113,8 @@ class _SpartanPathSheetDemoState extends State<SpartanPathSheetDemo> {
     });
   }
 
+  /// Returns the filtered list of locations for the current tab.
+  /// If the search query is empty, all items for the tab are returned.
   List<Location> _filteredItems() {
     final items = _dataByTab[_selectedTab] ?? const <Location>[];
     final q = _query.trim();
@@ -94,6 +122,10 @@ class _SpartanPathSheetDemoState extends State<SpartanPathSheetDemo> {
     return items.where((loc) => loc.matchesQuery(q)).toList();
   }
 
+  /// Opens the detail sheet for [location].
+  /// Records the main sheet's current position before doing anything.
+  /// If the main sheet was above 50%, it jumps it down to 50% so it sits
+  /// neatly behind the detail sheet without overlapping it.
   void _openDetail(Location location) {
     _sizeBeforeDetail = _mainSheetController.isAttached
         ? _mainSheetController.size
@@ -103,8 +135,14 @@ class _SpartanPathSheetDemoState extends State<SpartanPathSheetDemo> {
         _sizeBeforeDetail > _SheetConfig.initialChildSize) {
       _mainSheetController.jumpTo(_SheetConfig.initialChildSize);
     }
+    // If the main sheet was already at or below 50%, leave it in place —
+    // the detail sheet will appear directly on top.
   }
 
+  /// Closes the detail sheet and restores the main sheet.
+  /// If the main sheet was above 50% before the detail opened, it jumps
+  /// back to that position instantly. Otherwise no movement is needed
+  /// because the main sheet was never moved.
   void _closeDetail() {
     setState(() => _selectedLocation = null);
     if (_mainSheetController.isAttached &&
@@ -117,53 +155,69 @@ class _SpartanPathSheetDemoState extends State<SpartanPathSheetDemo> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final showSearch = _selectedTab == _TabIndex.search;
-    final metrics = _SheetLayoutMetrics.from(context: context, showSearch: showSearch);
+
+    // Recalculate header height whenever the tab or text scale changes.
+    final metrics = _SheetLayoutMetrics.from(
+      context: context,
+      showSearch: showSearch,
+    );
     final filtered = _filteredItems();
 
     return Stack(
       children: [
+        // The map/background content sits at the bottom of the stack.
+        // In the future this will be replaced by an interactive map widget.
         _Background(scheme: scheme),
 
-        // Main search/browse sheet — always present underneath
+        // The main search/browse sheet. It sits above the background and
+        // can be dragged between a minimized peek (5%), half-open (50%),
+        // and fully expanded (90%) position.
         ScrollConfiguration(
+          // Extend drag support to mouse, stylus, and trackpad in addition
+          // to the default touch-only behaviour.
           behavior: _MouseDragScrollBehavior(),
           child: DraggableScrollableSheet(
-          controller: _mainSheetController,
-          minChildSize: _SheetConfig.minChildSize,
-          initialChildSize: _SheetConfig.initialChildSize,
-          maxChildSize: _SheetConfig.maxChildSize,
-          snap: true,
-          snapSizes: _SheetConfig.snapSizes,
-          builder: (context, scrollController) {
-            return _FrostedSheet(
-              child: CustomScrollView(
-                controller: scrollController,
-                slivers: [
-                  SliverPersistentHeader(
-                    pinned: true,
-                    delegate: _TopHeaderDelegate(
-                      extent: metrics.pinnedHeaderExtent,
-                      showSearch: showSearch,
-                      selectedTab: _selectedTab,
-                      onSelectTab: _selectTab,
-                      searchController: _searchCtrl,
-                      onQueryChanged: (s) => setState(() => _query = s),
-                      metrics: metrics,
+            controller: _mainSheetController,
+            minChildSize: _SheetConfig.minChildSize,
+            initialChildSize: _SheetConfig.initialChildSize,
+            maxChildSize: _SheetConfig.maxChildSize,
+            snap: true,
+            snapSizes: _SheetConfig.snapSizes,
+            builder: (context, scrollController) {
+              return _FrostedSheet(
+                child: CustomScrollView(
+                  controller: scrollController,
+                  slivers: [
+                    // The tab bar (and optional search field) stays pinned
+                    // at the top of the sheet while the list scrolls beneath.
+                    SliverPersistentHeader(
+                      pinned: true,
+                      delegate: _TopHeaderDelegate(
+                        extent: metrics.pinnedHeaderExtent,
+                        showSearch: showSearch,
+                        selectedTab: _selectedTab,
+                        onSelectTab: _selectTab,
+                        searchController: _searchCtrl,
+                        onQueryChanged: (s) => setState(() => _query = s),
+                        metrics: metrics,
+                      ),
                     ),
-                  ),
-                  const SliverToBoxAdapter(child: Divider(height: 1)),
-                  _ResultsList(
-                    items: filtered,
-                    onTapLocation: _openDetail,
-                  ),
-                ],
-              ),
-            );
-          },
+                    const SliverToBoxAdapter(child: Divider(height: 1)),
+                    // The scrollable list of locations for the active tab.
+                    _ResultsList(
+                      items: filtered,
+                      onTapLocation: _openDetail,
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
         ),
 
-        // Detail sheet — slides over the search sheet when a location is tapped
+        // The detail sheet is conditionally rendered on top of everything
+        // when a location has been selected. Closing it sets _selectedLocation
+        // back to null, removing this widget from the tree entirely.
         if (_selectedLocation != null)
           _LocationDetailSheet(
             location: _selectedLocation!,
@@ -178,6 +232,10 @@ class _SpartanPathSheetDemoState extends State<SpartanPathSheetDemo> {
 
 /// ---------------------------------------------------------------------------
 ///  LOCATION DETAIL SHEET
+///  A fixed-height panel anchored to the bottom half of the screen, showing
+///  the full details for a selected location. It is not draggable — its
+///  position is always exactly 50% of the screen height, leaving the top half
+///  free for the map view that will be added in a future iteration.
 /// ---------------------------------------------------------------------------
 class _LocationDetailSheet extends StatefulWidget {
   const _LocationDetailSheet({
@@ -189,7 +247,12 @@ class _LocationDetailSheet extends StatefulWidget {
 
   final Location location;
   final VoidCallback onBack;
+
+  /// Whether this location is currently in the user's favorites list.
+  /// Passed in from the parent so the star reflects the shared favorites state.
   final bool isFavorite;
+
+  /// Called when the user taps the star icon to toggle the favorite status.
   final VoidCallback onFavoriteToggle;
 
   @override
@@ -197,6 +260,8 @@ class _LocationDetailSheet extends StatefulWidget {
 }
 
 class _LocationDetailSheetState extends State<_LocationDetailSheet> {
+  /// The entrance currently highlighted in blue. Defaults to the first
+  /// entrance in the list when the sheet opens.
   String? _selectedEntrance;
 
   @override
@@ -216,18 +281,22 @@ class _LocationDetailSheetState extends State<_LocationDetailSheet> {
   Widget build(BuildContext context) {
     final location = widget.location;
 
+    // Align to the bottom and size to exactly half the screen height.
+    // widthFactor: 1.0 ensures it stretches edge to edge.
     return Align(
       alignment: Alignment.bottomCenter,
       child: FractionallySizedBox(
         heightFactor: 0.5,
         widthFactor: 1.0,
         child: ClipRRect(
+          // Rounded top corners to match the main sheet style.
           borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
           child: Container(
             color: Colors.white,
             child: Column(
               children: [
-                // Pinned header
+                // Fixed header: back arrow, location name/subtitle, and
+                // the favorite star toggle. Does not scroll.
                 _DetailHeader(
                   location: location,
                   onBack: widget.onBack,
@@ -236,27 +305,35 @@ class _LocationDetailSheetState extends State<_LocationDetailSheet> {
                 ),
                 const Divider(height: 1),
 
-                // Scrollable middle content
+                // Scrollable body: description, floor plans, entrances,
+                // and rooms. Uses _MouseDragScrollBehavior so it can be
+                // scrolled with a mouse drag as well as touch.
                 Expanded(
                   child: ScrollConfiguration(
                     behavior: _MouseDragScrollBehavior(),
                     child: ListView(
                       padding: EdgeInsets.zero,
                       children: [
+                        // Tappable row that will open a description view.
                         _DetailNavRow(
                           icon: Icons.description_outlined,
                           label: 'Description',
                           onTap: () {},
                         ),
                         const Divider(height: 1, indent: 16, endIndent: 16),
+                        // Tappable row that will open floor plan images.
                         _DetailNavRow(
                           icon: Icons.map_outlined,
                           label: 'Floor plans',
                           onTap: () {},
                         ),
 
+                        // Entrances section — only shown if the location
+                        // has at least one entrance defined.
                         if (location.entrances.isNotEmpty) ...[
                           _SectionHeader(title: 'ENTRANCES'),
+                          // Each entrance can be tapped to highlight it in
+                          // blue, indicating the user's chosen entry point.
                           ...location.entrances.map(
                             (e) => _EntranceRow(
                               label: e,
@@ -267,6 +344,8 @@ class _LocationDetailSheetState extends State<_LocationDetailSheet> {
                           ),
                         ],
 
+                        // Rooms section — only shown if the location has
+                        // at least one room number defined.
                         if (location.rooms.isNotEmpty) ...[
                           _SectionHeader(title: 'ROOMS'),
                           ...location.rooms.map((r) => _RoomRow(label: r)),
@@ -276,7 +355,9 @@ class _LocationDetailSheetState extends State<_LocationDetailSheet> {
                   ),
                 ),
 
-                // Always-visible pinned DIRECTIONS button
+                // The DIRECTIONS button is always visible at the bottom of
+                // the sheet, outside the scrollable area, so it is never
+                // hidden by content.
                 _DirectionsButton(onTap: () {}),
               ],
             ),
@@ -287,6 +368,12 @@ class _LocationDetailSheetState extends State<_LocationDetailSheet> {
   }
 }
 
+/// ---------------------------------------------------------------------------
+///  DETAIL HEADER
+///  The non-scrolling top bar of the detail sheet. Shows a back arrow on the
+///  left, the location name and description subtitle in the centre, and a
+///  star button on the right to toggle the location as a favorite.
+/// ---------------------------------------------------------------------------
 class _DetailHeader extends StatelessWidget {
   const _DetailHeader({
     required this.location,
@@ -306,18 +393,22 @@ class _DetailHeader extends StatelessWidget {
       color: Colors.white,
       child: Column(
         children: [
-          // Back arrow + title + star row
           Padding(
             padding: const EdgeInsets.fromLTRB(4, 8, 4, 12),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
+                // Back arrow — dismisses the detail sheet and returns to
+                // the main search sheet.
                 IconButton(
-                  icon: const Icon(Icons.arrow_back, color: _Colors.headerNavy),
+                  icon: const Icon(Icons.arrow_back,
+                      color: _Colors.headerNavy),
                   onPressed: onBack,
                   tooltip: 'Back',
                 ),
                 const SizedBox(width: 4),
+                // Location name and description, allowed to expand and
+                // truncate if the text is too long.
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -341,14 +432,20 @@ class _DetailHeader extends StatelessWidget {
                     ],
                   ),
                 ),
+                // Star toggle: outlined when not a favorite, filled amber
+                // when the location has been added to favorites.
                 IconButton(
                   icon: Icon(
                     isFavorite ? Icons.star : Icons.star_border,
-                    color: isFavorite ? const Color(0xFFFFC107) : Colors.black45,
+                    color: isFavorite
+                        ? const Color(0xFFFFC107)
+                        : Colors.black45,
                     size: 28,
                   ),
                   onPressed: onFavoriteToggle,
-                  tooltip: isFavorite ? 'Remove from favorites' : 'Add to favorites',
+                  tooltip: isFavorite
+                      ? 'Remove from favorites'
+                      : 'Add to favorites',
                 ),
               ],
             ),
@@ -359,6 +456,12 @@ class _DetailHeader extends StatelessWidget {
   }
 }
 
+/// ---------------------------------------------------------------------------
+///  DETAIL NAV ROW
+///  A tappable list row used for Description and Floor Plans in the detail
+///  sheet. Renders with a leading icon, a label, and a chevron on the right
+///  to indicate that tapping will navigate somewhere.
+/// ---------------------------------------------------------------------------
 class _DetailNavRow extends StatelessWidget {
   const _DetailNavRow({
     required this.icon,
@@ -384,6 +487,11 @@ class _DetailNavRow extends StatelessWidget {
   }
 }
 
+/// ---------------------------------------------------------------------------
+///  SECTION HEADER
+///  A bold, uppercase label used to introduce grouped content in the detail
+///  sheet (e.g. "ENTRANCES", "ROOMS").
+/// ---------------------------------------------------------------------------
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader({required this.title});
   final String title;
@@ -405,6 +513,12 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
+/// ---------------------------------------------------------------------------
+///  ENTRANCE ROW
+///  A tappable row representing a single entrance to a location. When tapped,
+///  the row is highlighted in blue to indicate it is the user's selected
+///  entrance. Only one entrance can be highlighted at a time.
+/// ---------------------------------------------------------------------------
 class _EntranceRow extends StatelessWidget {
   const _EntranceRow({
     required this.label,
@@ -421,6 +535,7 @@ class _EntranceRow extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
+        // Blue tint background when selected, plain white otherwise.
         color: highlighted ? const Color(0xFFDDE8F5) : Colors.white,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Text(
@@ -428,7 +543,8 @@ class _EntranceRow extends StatelessWidget {
           style: TextStyle(
             fontSize: 14,
             color: highlighted ? _Colors.headerNavy : Colors.black87,
-            fontWeight: highlighted ? FontWeight.w500 : FontWeight.normal,
+            fontWeight:
+                highlighted ? FontWeight.w500 : FontWeight.normal,
           ),
         ),
       ),
@@ -436,19 +552,32 @@ class _EntranceRow extends StatelessWidget {
   }
 }
 
+/// ---------------------------------------------------------------------------
+OAOAOA///  ROOM ROW
+OAOAOA///  A simple non-interactive row that displays a room number or label within
+///  the Rooms section of the detail sheet.
+/// ---------------------------------------------------------------------------
 class _RoomRow extends StatelessWidget {
   const _RoomRow({required this.label});
-  final String label;
+OAOAOA  final String label;
 
   @override
-  Widget build(BuildContext context) {
+OAOAOA  Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Text(label, style: const TextStyle(fontSize: 14, color: Colors.black87)),
+      child: Text(
+        label,
+OAOAOA        style: const TextStyle(fontSize: 14, color: Colors.black87),
+      ),
     );
   }
 }
 
+/// ---------------------------------------------------------------------------
+///  DIRECTIONS BUTTON
+///  A full-width navy button pinned to the bottom of the detail sheet.
+///  Will eventually launch turn-by-turn directions to the selected location.
+/// ---------------------------------------------------------------------------
 class _DirectionsButton extends StatelessWidget {
   const _DirectionsButton({required this.onTap});
   final VoidCallback onTap;
@@ -487,6 +616,9 @@ class _DirectionsButton extends StatelessWidget {
 
 /// ---------------------------------------------------------------------------
 ///  BACKGROUND
+///  Fills the entire screen behind the sheets. This will be replaced with a
+///  live map widget in a future iteration. For now it just renders a
+///  placeholder label over the app's primary container colour.
 /// ---------------------------------------------------------------------------
 class _Background extends StatelessWidget {
   const _Background({required this.scheme});
@@ -509,7 +641,10 @@ class _Background extends StatelessWidget {
 }
 
 /// ---------------------------------------------------------------------------
-///  SHEET WRAPPER (rounded + blur + translucent)
+///  FROSTED SHEET
+///  The wrapper used by the main search sheet. Applies rounded top corners,
+///  a backdrop blur, and a semi-transparent white fill so the background
+///  (map) can faintly show through.
 /// ---------------------------------------------------------------------------
 class _FrostedSheet extends StatelessWidget {
   const _FrostedSheet({required this.child});
@@ -532,6 +667,9 @@ class _FrostedSheet extends StatelessWidget {
 
 /// ---------------------------------------------------------------------------
 ///  RESULTS LIST
+///  Renders the list of locations for the currently active tab as a sliver,
+///  so it can scroll inside the main sheet's CustomScrollView. Shows a "No
+///  results" message if the filtered list is empty.
 /// ---------------------------------------------------------------------------
 class _ResultsList extends StatelessWidget {
   const _ResultsList({required this.items, required this.onTapLocation});
@@ -561,6 +699,8 @@ class _ResultsList extends StatelessWidget {
   }
 }
 
+/// A single row in the results list. Displays the location icon, name, and
+/// description. Tapping it opens the detail sheet for that location.
 class _LocationTile extends StatelessWidget {
   const _LocationTile({required this.location, required this.onTap});
   final Location location;
@@ -578,7 +718,11 @@ class _LocationTile extends StatelessWidget {
 }
 
 /// ---------------------------------------------------------------------------
-///  HEADER DELEGATE
+///  TOP HEADER DELEGATE
+///  A SliverPersistentHeaderDelegate that keeps the tab bar (and optional
+///  search field) pinned at the top of the main sheet as the list scrolls.
+///  The header height is calculated by [_SheetLayoutMetrics] to account for
+///  text scaling and whether the search field is currently visible.
 /// ---------------------------------------------------------------------------
 class _TopHeaderDelegate extends SliverPersistentHeaderDelegate {
   _TopHeaderDelegate({
@@ -592,6 +736,9 @@ class _TopHeaderDelegate extends SliverPersistentHeaderDelegate {
   });
 
   final double extent;
+
+  /// Whether to show the search field below the tab bar. True only on the
+  /// Search tab.
   final bool showSearch;
   final int selectedTab;
   final ValueChanged<int> onSelectTab;
@@ -599,6 +746,7 @@ class _TopHeaderDelegate extends SliverPersistentHeaderDelegate {
   final ValueChanged<String> onQueryChanged;
   final _SheetLayoutMetrics metrics;
 
+  /// Fixed height — the header does not shrink or grow as the user scrolls.
   @override
   double get minExtent => extent;
 
@@ -606,7 +754,8 @@ class _TopHeaderDelegate extends SliverPersistentHeaderDelegate {
   double get maxExtent => extent;
 
   @override
-  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+  Widget build(
+      BuildContext context, double shrinkOffset, bool overlapsContent) {
     return Material(
       color: _Colors.headerNavy,
       elevation: 0,
@@ -618,9 +767,11 @@ class _TopHeaderDelegate extends SliverPersistentHeaderDelegate {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // White pill handle indicating the sheet is draggable.
             _Grabber(height: metrics.grabberHeight),
             SizedBox(height: metrics.gap),
 
+            // Search / Favorites / Me tab buttons.
             SizedBox(
               height: metrics.tabsHeight,
               child: _TabsRow(
@@ -629,6 +780,7 @@ class _TopHeaderDelegate extends SliverPersistentHeaderDelegate {
               ),
             ),
 
+            // Search field is only rendered on the Search tab.
             if (showSearch) ...[
               SizedBox(height: metrics.gap),
               SizedBox(
@@ -649,6 +801,7 @@ class _TopHeaderDelegate extends SliverPersistentHeaderDelegate {
     );
   }
 
+  /// Only rebuild if something that affects the header's appearance changed.
   @override
   bool shouldRebuild(covariant _TopHeaderDelegate old) {
     return extent != old.extent ||
@@ -660,7 +813,9 @@ class _TopHeaderDelegate extends SliverPersistentHeaderDelegate {
 }
 
 /// ---------------------------------------------------------------------------
-///  HEADER PIECES
+///  GRABBER
+///  The small white pill rendered at the top of the main sheet header to
+///  signal to users that the sheet can be dragged up or down.
 /// ---------------------------------------------------------------------------
 class _Grabber extends StatelessWidget {
   const _Grabber({required this.height});
@@ -684,7 +839,9 @@ class _Grabber extends StatelessWidget {
   }
 }
 
-// Dark grabber for the white detail sheet
+/// A dark-coloured grabber pill used on white-background sheets.
+/// Currently unused since the detail sheet is no longer draggable, but
+/// kept here in case it is needed again in future.
 class _GrabberDark extends StatelessWidget {
   const _GrabberDark();
 
@@ -703,6 +860,11 @@ class _GrabberDark extends StatelessWidget {
   }
 }
 
+/// ---------------------------------------------------------------------------
+///  TABS ROW
+///  Renders the three navigation tabs (Search, Favorites, Me) evenly spaced
+///  across the header. Delegates selection handling to [_TabIconButton].
+/// ---------------------------------------------------------------------------
 class _TabsRow extends StatelessWidget {
   const _TabsRow({required this.selectedTab, required this.onSelectTab});
   final int selectedTab;
@@ -736,12 +898,19 @@ class _TabsRow extends StatelessWidget {
   }
 }
 
+/// Helper extension that lets us build the Row's children list separately
+/// from the Row constructor, keeping [_TabsRow.build] readable.
 extension on Row {
   Row _withChildren(List<Widget> children) {
     return Row(mainAxisAlignment: mainAxisAlignment, children: children);
   }
 }
 
+/// ---------------------------------------------------------------------------
+///  TAB ICON BUTTON
+///  A single tab in the header. Renders an icon above a text label, both
+///  coloured white when selected and white70 when inactive.
+/// ---------------------------------------------------------------------------
 class _TabIconButton extends StatelessWidget {
   const _TabIconButton({
     required this.icon,
@@ -773,7 +942,9 @@ class _TabIconButton extends StatelessWidget {
               label,
               style: TextStyle(
                 fontSize: 12,
-                fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                // Bold when selected to reinforce the active state.
+                fontWeight:
+                    selected ? FontWeight.bold : FontWeight.normal,
                 color: color,
               ),
             ),
@@ -784,6 +955,12 @@ class _TabIconButton extends StatelessWidget {
   }
 }
 
+/// ---------------------------------------------------------------------------
+///  SEARCH FIELD
+///  The text input rendered below the tab bar on the Search tab. Includes a
+///  search icon prefix and a clear button suffix. Dismisses the keyboard when
+///  the user submits.
+/// ---------------------------------------------------------------------------
 class _SearchField extends StatelessWidget {
   const _SearchField({
     required this.controller,
@@ -816,7 +993,8 @@ class _SearchField extends StatelessWidget {
         filled: true,
         fillColor: Colors.white,
         isDense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         enabledBorder: OutlineInputBorder(
           borderSide: BorderSide(color: Colors.grey.shade300),
           borderRadius: BorderRadius.circular(12),
@@ -831,7 +1009,11 @@ class _SearchField extends StatelessWidget {
 }
 
 /// ---------------------------------------------------------------------------
-///  LAYOUT METRICS
+///  SHEET LAYOUT METRICS
+///  Calculates the pixel height of the pinned header in the main sheet,
+///  taking the device's text scale factor into account so the header never
+///  clips its content on larger font sizes. Passed into [_TopHeaderDelegate]
+///  as a single immutable object to simplify equality checks and rebuilds.
 /// ---------------------------------------------------------------------------
 class _SheetLayoutMetrics {
   final double pinnedHeaderExtent;
@@ -856,16 +1038,24 @@ class _SheetLayoutMetrics {
   }) {
     final textScaler = MediaQuery.of(context).textScaler;
     final labelFont = textScaler.scale(12);
+
+    // 1.35 is a standard line-height multiplier for body-sized text.
     final labelLineHeight = labelFont * 1.35;
 
     const grabberHeight = 16.0;
     const vPad = 12.0;
     const gap = 10.0;
 
+    // Tab button height = icon (32) + gap (4) + label line height + vertical
+    // padding inside the button (16 total).
     final tabsHeight = 32 + 4 + labelLineHeight + 16;
+
+    // Search field height grows slightly with text scale to avoid clipping.
     final searchHeight = 52 + (textScaler.scale(1) - 1) * 8;
 
     final headerBaseExtent = vPad + grabberHeight + gap + tabsHeight + vPad;
+
+    // Add the search field height only when on the Search tab.
     final pinnedHeaderExtent =
         showSearch ? headerBaseExtent + gap + searchHeight : headerBaseExtent;
 
@@ -879,6 +1069,8 @@ class _SheetLayoutMetrics {
     );
   }
 
+  /// Equality is used by [_TopHeaderDelegate.shouldRebuild] to avoid
+  /// unnecessary header rebuilds when the metrics have not changed.
   @override
   bool operator ==(Object other) =>
       other is _SheetLayoutMetrics &&
@@ -902,6 +1094,10 @@ class _SheetLayoutMetrics {
 
 /// ---------------------------------------------------------------------------
 ///  MOUSE DRAG SCROLL BEHAVIOR
+///  Extends Flutter's default MaterialScrollBehavior to recognise mouse,
+///  stylus, and trackpad drag gestures in addition to touch. Applied to both
+///  the main sheet's DraggableScrollableSheet and the detail sheet's
+///  scrollable body so all input devices can scroll and drag the UI.
 /// ---------------------------------------------------------------------------
 class _MouseDragScrollBehavior extends MaterialScrollBehavior {
   @override
@@ -914,33 +1110,66 @@ class _MouseDragScrollBehavior extends MaterialScrollBehavior {
 }
 
 /// ---------------------------------------------------------------------------
-///  CONSTANTS / THEME-ish
+///  SHEET CONFIG
+///  Named constants controlling the snap positions of the main sheet.
+///  minChildSize     — peeking state, just enough to show the grabber handle.
+///  initialChildSize — default half-open state on app launch.
+///  maxChildSize     — fully expanded state, covering 90% of the screen.
 /// ---------------------------------------------------------------------------
 class _SheetConfig {
   static const minChildSize = 0.05;
   static const initialChildSize = 0.5;
   static const maxChildSize = 0.9;
+
+  /// The sheet snaps to these two positions; it will not rest at any other
+  /// height after the user releases their drag.
   static const snapSizes = <double>[0.5, 0.9];
 }
 
+/// ---------------------------------------------------------------------------
+///  TAB INDEX
+///  Named constants for the three main navigation tabs, used throughout the
+///  codebase instead of raw integers for clarity.
+/// ---------------------------------------------------------------------------
 class _TabIndex {
   static const search = 0;
   static const favorites = 1;
   static const me = 2;
 }
 
+/// ---------------------------------------------------------------------------
+///  SPACING
+/// ---------------------------------------------------------------------------
 class _Spacing {
+  /// Horizontal padding applied inside the main sheet header.
   static const hPad = 12.0;
 }
 
+/// ---------------------------------------------------------------------------
+///  COLORS
+/// ---------------------------------------------------------------------------
 class _Colors {
+  /// Primary navy used for the header background, title text, and the
+  /// Directions button background.
   static const headerNavy = Color(0xFF0A3A6B);
+
+  /// White pill handle shown on the navy header.
   static const handleWhite = Colors.white;
+
+  /// Icon and label colour for the active tab.
   static const tabActive = Colors.white;
+
+  /// Icon and label colour for inactive tabs — slightly dimmed.
   static const tabInactive = Colors.white70;
 }
 
+/// ---------------------------------------------------------------------------
+///  TEXT STYLES
+///  Shared text styles used across multiple widgets to keep typography
+///  consistent without repeating style definitions inline.
+/// ---------------------------------------------------------------------------
 class _TextStyles {
+  /// Primary label style for location names and nav row labels.
   static const title = TextStyle(
     fontFamily: 'Inter',
     fontSize: 16,
@@ -948,6 +1177,7 @@ class _TextStyles {
     color: Color(0xff141414),
   );
 
+  /// Secondary label style for descriptions and subtitles.
   static const subtitle = TextStyle(
     fontFamily: 'Inter',
     fontSize: 14,
@@ -957,7 +1187,10 @@ class _TextStyles {
 }
 
 /// ---------------------------------------------------------------------------
-///  MODEL
+///  LOCATION MODEL
+///  Represents a single campus location. [entrances] and [rooms] are
+///  optional — widgets that display them check [isNotEmpty] before rendering
+///  their respective sections.
 /// ---------------------------------------------------------------------------
 class Location {
   final String name;
@@ -974,6 +1207,8 @@ class Location {
     this.rooms = const [],
   });
 
+  /// Returns true if any of the location's fields contain [query] as a
+  /// case-insensitive substring. Used to filter the results list.
   bool matchesQuery(String query) {
     final q = query.toLowerCase();
     return name.toLowerCase().contains(q) ||
@@ -984,6 +1219,8 @@ class Location {
 
 /// ---------------------------------------------------------------------------
 ///  SAMPLE DATA
+///  Placeholder locations used during development. In production these would
+///  be fetched from a backend API or a local database.
 /// ---------------------------------------------------------------------------
 final List<Location> searchLocations = [
   Location(
@@ -1029,6 +1266,8 @@ final List<Location> searchLocations = [
   ),
 ];
 
+/// The initial set of favorited locations. Loaded into the mutable
+/// [_SpartanPathSheetDemoState._favorites] list at startup.
 final List<Location> favoriteLocations = [
   Location(
     name: 'Fribley Commons',
