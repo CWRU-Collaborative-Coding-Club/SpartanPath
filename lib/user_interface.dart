@@ -60,38 +60,36 @@ class _SpartanPathSheetDemoState extends State<SpartanPathSheetDemo> {
   /// mutated at runtime as the user toggles the star on location detail sheets.
   /// Stored here (rather than in the detail sheet) so the Favorites tab
   /// always reflects the latest state.
-  late final List<Location> _favorites = List.of(favoriteLocations);
+  List<Location> _favorites = [];
 
   /// Maps each tab index to the list of locations it should display.
   /// The favorites tab points directly at [_favorites] so it updates live.
-  late final Map<int, List<Location>> _dataByTab = {
-    0: searchLocations,
-    1: _favorites,
-    2: List.generate(
-      8,
-      (i) => Location(
-        name: 'Profile Item $i',
-        description: 'Information related to your profile.',
-        category: 'Me',
+  /// Initialized in [initState] so that both [_favorites] and [_dataByTab]
+  /// are set up in a guaranteed order.
+  late final Map<int, List<Location>> _dataByTab;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // Seed favorites from sample data. Initialized here (rather than as a
+    // field initializer) so that _dataByTab can safely reference _favorites
+    // without relying on implicit field initialization order.
+    _favorites = List.of(favoriteLocations);
+
+    _dataByTab = {
+      0: searchLocations,
+      1: _favorites,
+      2: List.generate(
+        8,
+        (i) => Location(
+          id: 'profile_$i',
+          name: 'Profile Item $i',
+          description: 'Information related to your profile.',
+          category: 'Me',
+        ),
       ),
-    ),
-  };
-
-  /// Returns true if [location] is currently in the favorites list.
-  /// Matches by name since Location has no unique ID yet.
-  bool _isFavorite(Location location) =>
-      _favorites.any((f) => f.name == location.name);
-
-  /// Adds or removes [location] from [_favorites] and triggers a rebuild
-  /// so the star icon and Favorites tab both update immediately.
-  void _toggleFavorite(Location location) {
-    setState(() {
-      if (_isFavorite(location)) {
-        _favorites.removeWhere((f) => f.name == location.name);
-      } else {
-        _favorites.add(location);
-      }
-    });
+    };
   }
 
   @override
@@ -99,6 +97,24 @@ class _SpartanPathSheetDemoState extends State<SpartanPathSheetDemo> {
     _searchCtrl.dispose();
     _mainSheetController.dispose();
     super.dispose();
+  }
+
+  /// Returns true if [location] is currently in the favorites list.
+  /// Matches by [Location.id] to ensure correctness even if two locations
+  /// share the same display name.
+  bool _isFavorite(Location location) =>
+      _favorites.any((f) => f.id == location.id);
+
+  /// Adds or removes [location] from [_favorites] and triggers a rebuild
+  /// so the star icon and Favorites tab both update immediately.
+  void _toggleFavorite(Location location) {
+    setState(() {
+      if (_isFavorite(location)) {
+        _favorites.removeWhere((f) => f.id == location.id);
+      } else {
+        _favorites.add(location);
+      }
+    });
   }
 
   /// Switches the active tab. Clears the search query when leaving the
@@ -175,7 +191,7 @@ class _SpartanPathSheetDemoState extends State<SpartanPathSheetDemo> {
         ScrollConfiguration(
           // Extend drag support to mouse, stylus, and trackpad in addition
           // to the default touch-only behaviour.
-          behavior: _MouseDragScrollBehavior(),
+          behavior: _MouseDragScrollBehavior.instance,
           child: DraggableScrollableSheet(
             controller: _mainSheetController,
             minChildSize: _SheetConfig.minChildSize,
@@ -272,10 +288,8 @@ class _LocationDetailSheetState extends State<_LocationDetailSheet> {
     }
   }
 
-  @override
-  void dispose() {
-    super.dispose();
-  }
+  // No dispose() override needed — this state holds no resources that
+  // require manual cleanup beyond what Flutter handles automatically.
 
   @override
   Widget build(BuildContext context) {
@@ -310,7 +324,7 @@ class _LocationDetailSheetState extends State<_LocationDetailSheet> {
                 // scrolled with a mouse drag as well as touch.
                 Expanded(
                   child: ScrollConfiguration(
-                    behavior: _MouseDragScrollBehavior(),
+                    behavior: _MouseDragScrollBehavior.instance,
                     child: ListView(
                       padding: EdgeInsets.zero,
                       children: [
@@ -553,21 +567,21 @@ class _EntranceRow extends StatelessWidget {
 }
 
 /// ---------------------------------------------------------------------------
-OAOAOA///  ROOM ROW
-OAOAOA///  A simple non-interactive row that displays a room number or label within
+///  ROOM ROW
+///  A simple non-interactive row that displays a room number or label within
 ///  the Rooms section of the detail sheet.
 /// ---------------------------------------------------------------------------
 class _RoomRow extends StatelessWidget {
   const _RoomRow({required this.label});
-OAOAOA  final String label;
+  final String label;
 
   @override
-OAOAOA  Widget build(BuildContext context) {
+  Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Text(
         label,
-OAOAOA        style: const TextStyle(fontSize: 14, color: Colors.black87),
+        style: const TextStyle(fontSize: 14, color: Colors.black87),
       ),
     );
   }
@@ -839,27 +853,6 @@ class _Grabber extends StatelessWidget {
   }
 }
 
-/// A dark-coloured grabber pill used on white-background sheets.
-/// Currently unused since the detail sheet is no longer draggable, but
-/// kept here in case it is needed again in future.
-class _GrabberDark extends StatelessWidget {
-  const _GrabberDark();
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Container(
-        width: 48,
-        height: 4,
-        decoration: BoxDecoration(
-          color: Colors.black26,
-          borderRadius: BorderRadius.circular(2),
-        ),
-      ),
-    );
-  }
-}
-
 /// ---------------------------------------------------------------------------
 ///  TABS ROW
 ///  Renders the three navigation tabs (Search, Favorites, Me) evenly spaced
@@ -1098,10 +1091,19 @@ class _SheetLayoutMetrics {
 ///  stylus, and trackpad drag gestures in addition to touch. Applied to both
 ///  the main sheet's DraggableScrollableSheet and the detail sheet's
 ///  scrollable body so all input devices can scroll and drag the UI.
+///
+///  A single [instance] is reused across the widget tree rather than
+///  constructing a new object on every build, since the behaviour never
+///  changes at runtime.
 /// ---------------------------------------------------------------------------
 class _MouseDragScrollBehavior extends MaterialScrollBehavior {
+  const _MouseDragScrollBehavior._();
+
+  /// Shared singleton — avoids allocating a new instance on every build.
+  static const instance = _MouseDragScrollBehavior._();
+
   @override
-  Set<PointerDeviceKind> get dragDevices => {
+  Set<PointerDeviceKind> get dragDevices => const {
         PointerDeviceKind.touch,
         PointerDeviceKind.mouse,
         PointerDeviceKind.stylus,
@@ -1193,6 +1195,9 @@ class _TextStyles {
 ///  their respective sections.
 /// ---------------------------------------------------------------------------
 class Location {
+  /// A stable unique identifier for this location. Used for favorites matching
+  /// so that two locations with the same display name are never confused.
+  final String id;
   final String name;
   final String description;
   final String category;
@@ -1200,6 +1205,7 @@ class Location {
   final List<String> rooms;
 
   const Location({
+    required this.id,
     required this.name,
     required this.description,
     required this.category,
@@ -1220,10 +1226,12 @@ class Location {
 /// ---------------------------------------------------------------------------
 ///  SAMPLE DATA
 ///  Placeholder locations used during development. In production these would
-///  be fetched from a backend API or a local database.
+///  be fetched from a backend API or a local database. Each location is
+///  assigned a stable [id] that uniquely identifies it regardless of name.
 /// ---------------------------------------------------------------------------
 final List<Location> searchLocations = [
   Location(
+    id: 'rockefeller',
     name: 'Rockefeller',
     description: 'Department of Physics',
     category: 'Building',
@@ -1234,6 +1242,7 @@ final List<Location> searchLocations = [
     rooms: ['101', '102', '201', '202'],
   ),
   Location(
+    id: 'wolstein',
     name: 'Wolstein',
     description: 'CWRU Office of Admissions',
     category: 'Building',
@@ -1243,6 +1252,7 @@ final List<Location> searchLocations = [
     rooms: ['100', '110'],
   ),
   Location(
+    id: 'mandel_center',
     name: 'Mandel Center',
     description:
         'Jack, Joseph, and Morton Mandel Community Center, Admissions Office Welcome Center',
@@ -1255,6 +1265,7 @@ final List<Location> searchLocations = [
     rooms: ['101', '102'],
   ),
   Location(
+    id: 'fribley_commons',
     name: 'Fribley Commons',
     description: 'Southside Area Commons and Dining Hall',
     category: 'Commons',
@@ -1270,6 +1281,7 @@ final List<Location> searchLocations = [
 /// [_SpartanPathSheetDemoState._favorites] list at startup.
 final List<Location> favoriteLocations = [
   Location(
+    id: 'fribley_commons',
     name: 'Fribley Commons',
     description: 'Southside Area Commons and Dining Hall',
     category: 'Commons',
