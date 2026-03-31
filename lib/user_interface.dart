@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() => runApp(const SpartanPathApp());
 
@@ -72,11 +73,9 @@ class _SpartanPathSheetDemoState extends State<SpartanPathSheetDemo> {
   void initState() {
     super.initState();
 
-    // Seed favorites from sample data. Initialized here (rather than as a
-    // field initializer) so that _dataByTab can safely reference _favorites
-    // without relying on implicit field initialization order.
-    _favorites = List.of(favoriteLocations);
-
+    // _dataByTab must be set up synchronously so the widget can render
+    // immediately. _favorites starts empty and is populated once the
+    // async disk read completes in _loadFavorites().
     _dataByTab = {
       0: searchLocations,
       1: _favorites,
@@ -90,6 +89,39 @@ class _SpartanPathSheetDemoState extends State<SpartanPathSheetDemo> {
         ),
       ),
     };
+
+    _loadFavorites();
+  }
+
+  /// Reads persisted favorite IDs from disk and rebuilds [_favorites] to
+  /// match. Falls back to [favoriteLocations] if no saved data exists yet
+  /// (i.e. first launch), so new installs still get the seeded defaults.
+  Future<void> _loadFavorites() async {
+    final savedIds = await _FavoritesService.loadIds();
+
+    // All locations we know about — search list is the source of truth for
+    // now. When the backend provides a full location catalogue this lookup
+    // should be replaced with a map built from that data instead.
+    final allKnownLocations = searchLocations;
+
+    final loaded = savedIds.isEmpty
+        ? List.of(favoriteLocations) // first launch: use seeded defaults
+        : allKnownLocations
+            .where((loc) => savedIds.contains(loc.id))
+            .toList();
+
+    if (!mounted) return;
+    setState(() {
+      _favorites
+        ..clear()
+        ..addAll(loaded);
+    });
+
+    // If this is first launch (no saved data), persist the seeded defaults
+    // so subsequent launches load from disk rather than falling back again.
+    if (savedIds.isEmpty && loaded.isNotEmpty) {
+      await _FavoritesService.saveIds(loaded.map((l) => l.id).toSet());
+    }
   }
 
   @override
@@ -105,8 +137,9 @@ class _SpartanPathSheetDemoState extends State<SpartanPathSheetDemo> {
   bool _isFavorite(Location location) =>
       _favorites.any((f) => f.id == location.id);
 
-  /// Adds or removes [location] from [_favorites] and triggers a rebuild
-  /// so the star icon and Favorites tab both update immediately.
+  /// Adds or removes [location] from [_favorites], triggers a rebuild so
+  /// the star icon and Favorites tab both update immediately, then persists
+  /// the updated ID set to disk asynchronously.
   void _toggleFavorite(Location location) {
     setState(() {
       if (_isFavorite(location)) {
@@ -115,6 +148,9 @@ class _SpartanPathSheetDemoState extends State<SpartanPathSheetDemo> {
         _favorites.add(location);
       }
     });
+    // Fire-and-forget: UI is already updated above; the write just needs to
+    // complete before the app is killed. No await needed here.
+    _FavoritesService.saveIds(_favorites.map((f) => f.id).toSet());
   }
 
   /// Switches the active tab. Clears the search query when leaving the
@@ -1083,6 +1119,34 @@ class _SheetLayoutMetrics {
         vPad,
         gap,
       );
+}
+
+/// ---------------------------------------------------------------------------
+///  FAVORITES SERVICE
+///  Thin wrapper around shared_preferences that persists the user's favorited
+///  location IDs as a string list. All storage concerns live here so the
+///  state class stays focused on UI logic.
+///
+///  Only [Location.id] values are stored — never full Location objects —
+///  so the saved data remains valid even if display fields like [name] or
+///  [description] change in a future backend update.
+/// ---------------------------------------------------------------------------
+class _FavoritesService {
+  static const _key = 'favorite_location_ids';
+
+  /// Loads the set of favorited location IDs from disk.
+  /// Returns an empty set if nothing has been saved yet.
+  static Future<Set<String>> loadIds() async {
+    final prefs = await SharedPreferences.getInstance();
+    final ids = prefs.getStringList(_key);
+    return ids?.toSet() ?? {};
+  }
+
+  /// Persists [ids] to disk, replacing any previously saved list.
+  static Future<void> saveIds(Set<String> ids) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_key, ids.toList());
+  }
 }
 
 /// ---------------------------------------------------------------------------
